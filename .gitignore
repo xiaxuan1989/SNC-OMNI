@@ -1,0 +1,8 @@
+.DS_Store
+/textures
+omni_decoded_streams.json
+omni_decoded_streams.md
+omni_scene.mtl
+omni_scene.obj
+omni_scene_preview.html
+omni_scene_textured_preview.html
