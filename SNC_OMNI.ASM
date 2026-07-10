@@ -9,120 +9,113 @@ org 0100h
 
 ; Copy the 64 KiB COM segment up by 2000h paragraphs.
 packed_entry:
-    db 033h, 0F6h                         ; 0100: xor si,si
-    db 0BFh, 000h, 020h                   ; 0102: mov di,0x2000
-    db 0B5h, 010h                         ; 0105: mov ch,0x10
-    db 0F3h, 0A5h                         ; 0107: rep movsw
-    db 08Ch, 0C8h                         ; 0109: mov ax,cs
-    db 005h, 000h, 002h                   ; 010B: add ax,0x200
-    db 050h                               ; 010E: push ax
-    db 068h, 013h, 001h                   ; 010F: push word 0x113
-    db 0CBh                               ; 0112: retf
-
+    db 033h, 0F6h                        ; 0100: xor si,si
+    mov di,0x2000                        ; 0102: BF 00 20
+    mov ch,0x10                          ; 0105: B5 10
+    rep movsw                            ; 0107: F3 A5
+    mov ax,cs                            ; 0109: 8C C8
+    add ax,0x200                         ; 010B: 05 00 02
+    push ax                              ; 010E: 50
+    push word 0x113                      ; 010F: 68 13 01
+    retf                                 ; 0112: CB
 ; Continue execution from the relocated copy.
 relocated_unpacker_entry:
-    db 00Eh                               ; 0113: push cs
-    db 01Fh                               ; 0114: pop ds
-    db 0BEh, 0A1h, 001h                   ; 0115: mov si,0x1a1
-    db 0BFh, 000h, 001h                   ; 0118: mov di,0x100
-    db 006h                               ; 011B: push es
-    db 057h                               ; 011C: push di
-
+    push cs                              ; 0113: 0E
+    pop ds                               ; 0114: 1F
+    mov si,0x1a1                         ; 0115: BE A1 01
+    mov di,0x100                         ; 0118: BF 00 01
+    push es                              ; 011B: 06
+    push di                              ; 011C: 57
 ; Initialize adaptive arithmetic model cumulative table at 1321h.
 init_range_model:
-    db 0B8h, 011h, 001h                   ; 011D: mov ax,0x111
-    db 0BBh, 021h, 013h                   ; 0120: mov bx,0x1321
+    mov ax,0x111                         ; 011D: B8 11 01
+    mov bx,0x1321                        ; 0120: BB 21 13
 init_range_model_loop:
-    db 089h, 007h                         ; 0123: mov [bx],ax
-    db 04Bh                               ; 0125: dec bx
-    db 04Bh                               ; 0126: dec bx
-    db 048h                               ; 0127: dec ax
-    db 079h, 0F9h                         ; 0128: jns 0x123
+    mov [bx],ax                          ; 0123: 89 07
+    dec bx                               ; 0125: 4B
+    dec bx                               ; 0126: 4B
+    dec ax                               ; 0127: 48
+    jns short 0x123                     ; 0128: 79 F9
 load_initial_code_value:
-    db 0ADh                               ; 012A: lodsw
-    db 086h, 0E0h                         ; 012B: xchg al,ah
+    lodsw                                ; 012A: AD
+    xchg al,ah                           ; 012B: 86 E0
     db 08Bh, 0C8h                         ; 012D: mov cx,ax
-    db 0BDh, 0FFh, 0FFh                   ; 012F: mov bp,0xffff
-
+    mov bp,0xffff                        ; 012F: BD FF FF
 ; Decode one command symbol: literal, back-reference, or end marker.
 unpack_symbol_loop:
-    db 0E8h, 020h, 000h                   ; 0132: call 0x155
-    db 03Dh, 000h, 001h                   ; 0135: cmp ax,0x100
-    db 074h, 01Ah                         ; 0138: jz 0x154
-    db 07Fh, 003h                         ; 013A: jg 0x13f
-    db 0AAh                               ; 013C: stosb
-    db 0EBh, 0F3h                         ; 013D: jmp short 0x132
-
+    call 0x155                           ; 0132: E8 20 00
+    cmp ax,0x100                         ; 0135: 3D 00 01
+    jz short 0x154                      ; 0138: 74 1A
+    jg short 0x13f                      ; 013A: 7F 03
+    stosb                                ; 013C: AA
+    jmp short 0x132                      ; 013D: EB F3
 ; Symbol > 100h encodes a length plus a separately decoded distance.
 copy_backref_command:
-    db 02Dh, 0FFh, 000h                   ; 013F: sub ax,0xff
-    db 050h                               ; 0142: push ax
-    db 0E8h, 00Fh, 000h                   ; 0143: call 0x155
-    db 05Ah                               ; 0146: pop dx
-    db 0F7h, 0D8h                         ; 0147: neg ax
+    sub ax,0xff                          ; 013F: 2D FF 00
+    push ax                              ; 0142: 50
+    call 0x155                           ; 0143: E8 0F 00
+    pop dx                               ; 0146: 5A
+    neg ax                               ; 0147: F7 D8
     db 08Bh, 0D8h                         ; 0149: mov bx,ax
 copy_backref_loop:
-    db 026h, 08Ah, 001h                   ; 014B: mov al,[es:bx+di]
-    db 0AAh                               ; 014E: stosb
-    db 04Ah                               ; 014F: dec dx
-    db 075h, 0F9h                         ; 0150: jnz 0x14b
-    db 0EBh, 0DEh                         ; 0152: jmp short 0x132
-
+    mov al,[es:bx+di]                    ; 014B: 26 8A 01
+    stosb                                ; 014E: AA
+    dec dx                               ; 014F: 4A
+    jnz short 0x14b                     ; 0150: 75 F9
+    jmp short 0x132                      ; 0152: EB DE
 ; RETF returns to ES:0100, the freshly unpacked program.
 unpack_done:
-    db 0CBh                               ; 0154: retf
-
+    retf                                 ; 0154: CB
 ; Adaptive arithmetic/range decoder, returns symbol in AX.
 decode_range_symbol:
-    db 057h                               ; 0155: push di
-    db 0BBh, 021h, 013h                   ; 0156: mov bx,0x1321
+    push di                              ; 0155: 57
+    mov bx,0x1321                        ; 0156: BB 21 13
     db 08Bh, 0C1h                         ; 0159: mov ax,cx
-    db 040h                               ; 015B: inc ax
-    db 0F7h, 027h                         ; 015C: mul word [bx]
-    db 0F7h, 0F5h                         ; 015E: div bp
+    inc ax                               ; 015B: 40
+    mul word [bx]                        ; 015C: F7 27
+    div bp                               ; 015E: F7 F5
     db 08Bh, 0FBh                         ; 0160: mov di,bx
-    db 0BAh, 011h, 001h                   ; 0162: mov dx,0x111
+    mov dx,0x111                         ; 0162: BA 11 01
 find_symbol_bucket_loop:
-    db 04Fh                               ; 0165: dec di
-    db 04Fh                               ; 0166: dec di
-    db 04Ah                               ; 0167: dec dx
-    db 039h, 005h                         ; 0168: cmp [di],ax
-    db 07Fh, 0F9h                         ; 016A: jg 0x165
-    db 052h                               ; 016C: push dx
+    dec di                               ; 0165: 4F
+    dec di                               ; 0166: 4F
+    dec dx                               ; 0167: 4A
+    cmp [di],ax                          ; 0168: 39 05
+    jg short 0x165                      ; 016A: 7F F9
+    push dx                              ; 016C: 52
     db 08Bh, 0C5h                         ; 016D: mov ax,bp
-    db 0F7h, 025h                         ; 016F: mul word [di]
-    db 0F7h, 037h                         ; 0171: div word [bx]
+    mul word [di]                        ; 016F: F7 25
+    div word [bx]                        ; 0171: F7 37
     db 02Bh, 0C8h                         ; 0173: sub cx,ax
-    db 095h                               ; 0175: xchg ax,bp
-    db 0F7h, 065h, 002h                   ; 0176: mul word [di+0x2]
-    db 0F7h, 037h                         ; 0179: div word [bx]
-    db 095h                               ; 017B: xchg ax,bp
+    xchg ax,bp                           ; 0175: 95
+    mul word [di+0x2]                    ; 0176: F7 65 02
+    div word [bx]                        ; 0179: F7 37
+    xchg ax,bp                           ; 017B: 95
     db 02Bh, 0E8h                         ; 017C: sub bp,ax
 
 ; Shift more bits from compressed stream while range high bit is clear.
 renormalize_range_loop:
-    db 0FEh, 00Eh, 0FEh, 010h             ; 017E: dec byte [0x10fe]
-    db 079h, 006h                         ; 0182: jns 0x18a
-    db 0C6h, 006h, 0FEh, 010h, 007h       ; 0184: mov byte [0x10fe],0x7
-    db 046h                               ; 0189: inc si
+    dec byte [0x10fe]                    ; 017E: FE 0E FE 10
+    jns short 0x18a                     ; 0182: 79 06
+    mov byte [0x10fe],0x7                ; 0184: C6 06 FE 10 07
+    inc si                               ; 0189: 46
 consume_packed_bit:
-    db 0D0h, 014h                         ; 018A: rcl byte [si],1
-    db 0D1h, 0D1h                         ; 018C: rcl cx,1
-    db 0D1h, 0E5h                         ; 018E: shl bp,1
-    db 079h, 0ECh                         ; 0190: jns 0x17e
-    db 05Ah                               ; 0192: pop dx
+    rcl byte [si],1                      ; 018A: D0 14
+    rcl cx,1                             ; 018C: D1 D1
+    shl bp,1                             ; 018E: D1 E5
+    jns short 0x17e                     ; 0190: 79 EC
+    pop dx                               ; 0192: 5A
 update_model_counts:
-    db 0B8h, 011h, 001h                   ; 0193: mov ax,0x111
+    mov ax,0x111                         ; 0193: B8 11 01
 update_model_counts_loop:
-    db 0FFh, 007h                         ; 0196: inc word [bx]
-    db 04Bh                               ; 0198: dec bx
-    db 04Bh                               ; 0199: dec bx
-    db 048h                               ; 019A: dec ax
+    inc word [bx]                        ; 0196: FF 07
+    dec bx                               ; 0198: 4B
+    dec bx                               ; 0199: 4B
+    dec ax                               ; 019A: 48
     db 03Bh, 0D0h                         ; 019B: cmp dx,ax
-    db 075h, 0F7h                         ; 019D: jnz 0x196
-    db 05Fh                               ; 019F: pop di
-    db 0C3h                               ; 01A0: ret
-
+    jnz short 0x196                     ; 019D: 75 F7
+    pop di                               ; 019F: 5F
+    ret                                  ; 01A0: C3
 compressed_payload:
     incbin "SNC_OMNI_payload.bin"
 
