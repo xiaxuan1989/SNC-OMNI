@@ -9,6 +9,137 @@
 bits 16
 org 0100h
 
+%macro _reg8_id 2
+    %ifidni %2, al
+        %assign %1 0
+    %elifidni %2, cl
+        %assign %1 1
+    %elifidni %2, dl
+        %assign %1 2
+    %elifidni %2, bl
+        %assign %1 3
+    %elifidni %2, ah
+        %assign %1 4
+    %elifidni %2, ch
+        %assign %1 5
+    %elifidni %2, dh
+        %assign %1 6
+    %elifidni %2, bh
+        %assign %1 7
+    %else
+        %error "unsupported 8-bit register"
+    %endif
+%endmacro
+
+%macro _reg16_id 2
+    %ifidni %2, ax
+        %assign %1 0
+    %elifidni %2, cx
+        %assign %1 1
+    %elifidni %2, dx
+        %assign %1 2
+    %elifidni %2, bx
+        %assign %1 3
+    %elifidni %2, sp
+        %assign %1 4
+    %elifidni %2, bp
+        %assign %1 5
+    %elifidni %2, si
+        %assign %1 6
+    %elifidni %2, di
+        %assign %1 7
+    %else
+        %error "unsupported 16-bit register"
+    %endif
+%endmacro
+
+%macro _reg32_id 2
+    %ifidni %2, eax
+        %assign %1 0
+    %elifidni %2, ecx
+        %assign %1 1
+    %elifidni %2, edx
+        %assign %1 2
+    %elifidni %2, ebx
+        %assign %1 3
+    %elifidni %2, esp
+        %assign %1 4
+    %elifidni %2, ebp
+        %assign %1 5
+    %elifidni %2, esi
+        %assign %1 6
+    %elifidni %2, edi
+        %assign %1 7
+    %else
+        %error "unsupported 32-bit register"
+    %endif
+%endmacro
+
+; Force the opcode direction bit used by the original binary for reg/reg forms
+; where NASM's normal mnemonic picks the equivalent opposite encoding.
+%macro _op_r_rm8 3
+    _reg8_id %%reg, %2
+    _reg8_id %%rm, %3
+    db %1, 0C0h + (%%reg << 3) + %%rm
+%endmacro
+
+%macro _op_r_rm16 3
+    _reg16_id %%reg, %2
+    _reg16_id %%rm, %3
+    db %1, 0C0h + (%%reg << 3) + %%rm
+%endmacro
+
+%macro _op_r_rm32 3
+    _reg32_id %%reg, %2
+    _reg32_id %%rm, %3
+    db 066h, %1, 0C0h + (%%reg << 3) + %%rm
+%endmacro
+
+%macro xor_r_rm8 2
+    _op_r_rm8 032h, %1, %2
+%endmacro
+%macro mov_r_rm8 2
+    _op_r_rm8 08Ah, %1, %2
+%endmacro
+%macro add_r_rm8 2
+    _op_r_rm8 002h, %1, %2
+%endmacro
+%macro sub_r_rm8 2
+    _op_r_rm8 02Ah, %1, %2
+%endmacro
+%macro cmp_r_rm8 2
+    _op_r_rm8 03Ah, %1, %2
+%endmacro
+%macro or_r_rm8 2
+    _op_r_rm8 00Ah, %1, %2
+%endmacro
+
+%macro xor_r_rm16 2
+    _op_r_rm16 033h, %1, %2
+%endmacro
+%macro mov_r_rm16 2
+    _op_r_rm16 08Bh, %1, %2
+%endmacro
+%macro add_r_rm16 2
+    _op_r_rm16 003h, %1, %2
+%endmacro
+%macro sub_r_rm16 2
+    _op_r_rm16 02Bh, %1, %2
+%endmacro
+%macro cmp_r_rm16 2
+    _op_r_rm16 03Bh, %1, %2
+%endmacro
+%macro or_r_rm16 2
+    _op_r_rm16 00Bh, %1, %2
+%endmacro
+
+%macro xor_r_rm32 2
+    _op_r_rm32 033h, %1, %2
+%endmacro
+%macro sub_r_rm32 2
+    _op_r_rm32 02Bh, %1, %2
+%endmacro
+
 
 ; Unpacked runtime entry point.
 intro_start:
@@ -26,7 +157,7 @@ intro_start:
     loop 0x115                             ; 0118: E2 FB
     mov di,0x13ae                          ; 011A: BF AE 13
     mov cx,0x1fde                          ; 011D: B9 DE 1F
-    db 032h, 0C0h                         ; 0120: xor al,al
+    xor_r_rm8 al, al                       ; 0120: 32 C0 / xor al,al
     rep stosb                              ; 0122: F3 AA
 ; Try to reset MPU-401 and enter UART mode.
 probe_mpu401:
@@ -64,7 +195,7 @@ midi_channel_decode_loop:
     call 0x6d5                             ; 0156: E8 7C 05
     mov [bx+0x4],di                        ; 0159: 89 7F 04
     call 0x63b                             ; 015C: E8 DC 04
-    db 032h, 0C0h                         ; 015F: xor al,al
+    xor_r_rm8 al, al                       ; 015F: 32 C0 / xor al,al
     stosb                                  ; 0161: AA
     add bx,byte +0x6                       ; 0162: 83 C3 06
     inc word [0x1406]                      ; 0165: FF 06 06 14
@@ -80,7 +211,7 @@ init_video_and_palette:
     mov cx,0x9                             ; 017B: B9 09 00
     mov dx,0x106                           ; 017E: BA 06 01
     int 0x10                               ; 0181: CD 10
-    db 003h, 0E9h                         ; 0183: add bp,cx
+    add_r_rm16 bp, cx                      ; 0183: 03 E9 / add bp,cx
     mov cl,0x11                            ; 0185: B1 11
     mov dx,0xc01                           ; 0187: BA 01 0C
     int 0x10                               ; 018A: CD 10
@@ -90,20 +221,20 @@ init_video_and_palette:
 palette_component_loop:
     mov si,0xf28                           ; 0191: BE 28 0F
     mov di,0x1408                          ; 0194: BF 08 14
-    db 032h, 0F6h                         ; 0197: xor dh,dh
+    xor_r_rm8 dh, dh                       ; 0197: 32 F6 / xor dh,dh
     lodsb                                  ; 0199: AC
     movzx cx,al                            ; 019A: 0F B6 C8
 palette_ramp_loop:
     push cx                                ; 019D: 51
     mov cl,[si]                            ; 019E: 8A 0C
     mov ah,[bx+si]                         ; 01A0: 8A 20
-    db 02Bh, 0C2h                         ; 01A2: sub ax,dx
+    sub_r_rm16 ax, dx                      ; 01A2: 2B C2 / sub ax,dx
     push dx                                ; 01A4: 52
     cwd                                    ; 01A5: 99
     idiv cx                                ; 01A6: F7 F9
     pop dx                                 ; 01A8: 5A
 palette_interp_store:
-    db 003h, 0D0h                         ; 01A9: add dx,ax
+    add_r_rm16 dx, ax                      ; 01A9: 03 D0 / add dx,ax
     mov [es:bx+di-0x1],dh                  ; 01AB: 26 88 71 FF
     add di,byte +0x3                       ; 01AF: 83 C7 03
     loop 0x1a9                             ; 01B2: E2 F5
@@ -143,7 +274,7 @@ generate_texture19_scatter:
 texture19_noise_loop:
     mov bx,0x1000                          ; 0201: BB 00 10
     call 0x699                             ; 0204: E8 92 04
-    db 08Bh, 0F8h                         ; 0207: mov di,ax
+    mov_r_rm16 di, ax                      ; 0207: 8B F8 / mov di,ax
     inc byte [es:di]                       ; 0209: 26 FE 05
     loop 0x201                             ; 020C: E2 F3
     push ds                                ; 020E: 1E
@@ -164,26 +295,26 @@ sparkle_position_loop:
     loop 0x216                             ; 022B: E2 E9
 generate_texture0:
     mov es,[0x424c]                        ; 022D: 8E 06 4C 42
-    db 033h, 0FFh                         ; 0231: xor di,di
+    xor_r_rm16 di, di                      ; 0231: 33 FF / xor di,di
     mov cx,0x1000                          ; 0233: B9 00 10
 generate_texture0_loop:
-    db 08Bh, 0C7h                         ; 0236: mov ax,di
+    mov_r_rm16 ax, di                      ; 0236: 8B C7 / mov ax,di
     test al,0x8                            ; 0238: A8 08
     jng short 0x23e                        ; 023A: 7E 02
     not al                                 ; 023C: F6 D0
 loc_023E:
     and al,0xf                             ; 023E: 24 0F
-    db 08Bh, 0D8h                         ; 0240: mov bx,ax
-    db 08Bh, 0C7h                         ; 0242: mov ax,di
+    mov_r_rm16 bx, ax                      ; 0240: 8B D8 / mov bx,ax
+    mov_r_rm16 ax, di                      ; 0242: 8B C7 / mov ax,di
     shr ax,byte 0x6                        ; 0244: C1 E8 06
     test al,0x8                            ; 0247: A8 08
     jng short 0x24d                        ; 0249: 7E 02
     not al                                 ; 024B: F6 D0
 loc_024D:
     and al,0xf                             ; 024D: 24 0F
-    db 03Ah, 0C3h                         ; 024F: cmp al,bl
+    cmp_r_rm8 al, bl                       ; 024F: 3A C3 / cmp al,bl
     jng short 0x255                        ; 0251: 7E 02
-    db 08Bh, 0C3h                         ; 0253: mov ax,bx
+    mov_r_rm16 ax, bx                      ; 0253: 8B C3 / mov ax,bx
 loc_0255:
     add al,0xe0                            ; 0255: 04 E0
     stosb                                  ; 0257: AA
@@ -195,13 +326,13 @@ derive_texture_loop:
     movzx bx,dl                            ; 025F: 0F B6 DA
     mov es,[bx+0x424c]                     ; 0262: 8E 87 4C 42
     lodsw                                  ; 0266: AD
-    db 08Ah, 0D8h                         ; 0267: mov bl,al
+    mov_r_rm8 bl, al                       ; 0267: 8A D8 / mov bl,al
     mov fs,[bx+0x424c]                     ; 0269: 8E A7 4C 42
-    db 033h, 0FFh                         ; 026D: xor di,di
+    xor_r_rm16 di, di                      ; 026D: 33 FF / xor di,di
     mov cx,0x1000                          ; 026F: B9 00 10
 copy_texture_noise_loop:
     mov al,[fs:di]                         ; 0272: 64 8A 05
-    db 002h, 0C4h                         ; 0275: add al,ah
+    add_r_rm8 al, ah                       ; 0275: 02 C4 / add al,ah
     stosb                                  ; 0277: AA
     loop 0x272                             ; 0278: E2 F8
     inc dx                                 ; 027A: 42
@@ -214,25 +345,25 @@ apply_texture_rect_recipes:
 texture_rect_loop:
     push cx                                ; 0287: 51
     mov bl,[si]                            ; 0288: 8A 1C
-    db 08Ah, 0D3h                         ; 028A: mov dl,bl
+    mov_r_rm8 dl, bl                       ; 028A: 8A D3 / mov dl,bl
     shr dl,byte 0x4                        ; 028C: C0 EA 04
     and bx,byte +0xf                       ; 028F: 83 E3 0F
-    db 003h, 0DBh                         ; 0292: add bx,bx
+    add_r_rm16 bx, bx                      ; 0292: 03 DB / add bx,bx
     mov es,[bx+0x424c]                     ; 0294: 8E 87 4C 42
     movzx cx,[si+0x2]                      ; 0298: 0F B6 4C 02
 texture_rect_y_loop:
     movzx bx,[si+0x1]                      ; 029C: 0F B6 5C 01
 texture_rect_x_loop:
-    db 08Bh, 0F9h                         ; 02A0: mov di,cx
+    mov_r_rm16 di, cx                      ; 02A0: 8B F9 / mov di,cx
     shl di,byte 0x6                        ; 02A2: C1 E7 06
-    db 003h, 0FBh                         ; 02A5: add di,bx
-    db 08Ah, 0C2h                         ; 02A7: mov al,dl
+    add_r_rm16 di, bx                      ; 02A5: 03 FB / add di,bx
+    mov_r_rm8 al, dl                       ; 02A7: 8A C2 / mov al,dl
     dec al                                 ; 02A9: FE C8
     jz short 0x2c0                         ; 02AB: 74 13
     dec al                                 ; 02AD: FE C8
     jz short 0x2bd                         ; 02AF: 74 0C
-    db 08Bh, 0C3h                         ; 02B1: mov ax,bx
-    db 003h, 0C1h                         ; 02B3: add ax,cx
+    mov_r_rm16 ax, bx                      ; 02B1: 8B C3 / mov ax,bx
+    add_r_rm16 ax, cx                      ; 02B3: 03 C1 / add ax,cx
     and al,0x4                             ; 02B5: 24 04
     jz short 0x2bb                         ; 02B7: 74 02
     mov al,0x98                            ; 02B9: B0 98
@@ -265,7 +396,7 @@ texture11_red_fade_dot:
     push ax                                ; 02E9: 50
     mov bx,0x40                            ; 02EA: BB 40 00
     call 0x699                             ; 02ED: E8 A9 03
-    db 02Bh, 0F8h                         ; 02F0: sub di,ax
+    sub_r_rm16 di, ax                      ; 02F0: 2B F8 / sub di,ax
     pop ax                                 ; 02F2: 58
     stosb                                  ; 02F3: AA
     pop di                                 ; 02F4: 5F
@@ -279,24 +410,24 @@ build_light_lookup_table:
     push ds                                ; 02FF: 1E
     pop es                                 ; 0300: 07
     mov di,0x4274                          ; 0301: BF 74 42
-    db 032h, 0DBh                         ; 0304: xor bl,bl
+    xor_r_rm8 bl, bl                       ; 0304: 32 DB / xor bl,bl
 loc_0306:
     inc bl                                 ; 0306: FE C3
-    db 033h, 0C9h                         ; 0308: xor cx,cx
+    xor_r_rm16 cx, cx                      ; 0308: 33 C9 / xor cx,cx
 loc_030A:
-    db 08Ah, 0C1h                         ; 030A: mov al,cl
+    mov_r_rm8 al, cl                       ; 030A: 8A C1 / mov al,cl
     and al,0x1f                            ; 030C: 24 1F
     mul bl                                 ; 030E: F6 E3
-    db 003h, 0C0h                         ; 0310: add ax,ax
-    db 08Ah, 0C1h                         ; 0312: mov al,cl
+    add_r_rm16 ax, ax                      ; 0310: 03 C0 / add ax,ax
+    mov_r_rm8 al, cl                       ; 0312: 8A C1 / mov al,cl
     and al,0xe0                            ; 0314: 24 E0
-    db 002h, 0C4h                         ; 0316: add al,ah
+    add_r_rm8 al, ah                       ; 0316: 02 C4 / add al,ah
     stosb                                  ; 0318: AA
     inc cl                                 ; 0319: FE C1
     cmp cl,0xc0                            ; 031B: 80 F9 C0
     jnz short 0x30a                        ; 031E: 75 EA
 loc_0320:
-    db 08Ah, 0C1h                         ; 0320: mov al,cl
+    mov_r_rm8 al, cl                       ; 0320: 8A C1 / mov al,cl
     stosb                                  ; 0322: AA
     inc cl                                 ; 0323: FE C1
     jnz short 0x320                        ; 0325: 75 F9
@@ -326,7 +457,7 @@ install_interrupts:
     push word 0xa000                       ; 0365: 68 00 A0
     pop ds                                 ; 0368: 1F
     mov si,0x640                           ; 0369: BE 40 06
-    db 033h, 0FFh                         ; 036C: xor di,di
+    xor_r_rm16 di, di                      ; 036C: 33 FF / xor di,di
     mov cx,0x7d00                          ; 036E: B9 00 7D
     lodsb                                  ; 0371: AC
     stosb                                  ; 0372: AA
@@ -335,7 +466,7 @@ install_interrupts:
     pop ds                                 ; 0376: 1F
 ; Upload palette, consume timer ticks, animate, transform, sort, render, blit.
 main_frame_loop:
-    db 032h, 0C0h                         ; 0377: xor al,al
+    xor_r_rm8 al, al                       ; 0377: 32 C0 / xor al,al
     mov dx,0x3c8                           ; 0379: BA C8 03
     out dx,al                              ; 037C: EE
     inc dx                                 ; 037D: 42
@@ -344,7 +475,7 @@ main_frame_loop:
     rep outsb                              ; 0384: F3 6E
     mov cx,[0x1404]                        ; 0386: 8B 0E 04 14
     mov word [0x1404],0x0                  ; 038A: C7 06 04 14 00 00
-    db 00Bh, 0C9h                         ; 0390: or cx,cx
+    or_r_rm16 cx, cx                       ; 0390: 0B C9 / or cx,cx
     jz near 0x41d                          ; 0392: 0F 84 87 00
 process_ticks_loop:
     push cx                                ; 0396: 51
@@ -353,9 +484,9 @@ process_ticks_loop:
     jns short 0x3c7                        ; 039D: 79 28
     mov bx,[si+0x8]                        ; 039F: 8B 5C 08
     mov al,[bx+0x12e3]                     ; 03A2: 8A 87 E3 12
-    db 00Ah, 0C0h                         ; 03A6: or al,al
+    or_r_rm8 al, al                        ; 03A6: 0A C0 / or al,al
     jz near 0x526                          ; 03A8: 0F 84 7A 01
-    db 08Bh, 0D8h                         ; 03AC: mov bx,ax
+    mov_r_rm16 bx, ax                      ; 03AC: 8B D8 / mov bx,ax
     and bl,0x7                             ; 03AE: 80 E3 07
     mov [si+0xc],bl                        ; 03B1: 88 5C 0C
     dec bl                                 ; 03B4: FE CB
@@ -363,7 +494,7 @@ process_ticks_loop:
     neg word [0x1360]                      ; 03B8: F7 1E 60 13
 loc_03BC:
     and ax,0xf8                            ; 03BC: 25 F8 00
-    db 003h, 0C0h                         ; 03BF: add ax,ax
+    add_r_rm16 ax, ax                      ; 03BF: 03 C0 / add ax,ax
     mov [si+0xa],ax                        ; 03C1: 89 44 0A
     inc word [si+0x8]                      ; 03C4: FF 44 08
 apply_scene_command:
@@ -397,7 +528,7 @@ update_camera_position:
     push ax                                ; 03F6: 50
     call 0xbfc                             ; 03F7: E8 02 08
     mov cl,0x3                             ; 03FA: B1 03
-    db 033h, 0F6h                         ; 03FC: xor si,si
+    xor_r_rm16 si, si                      ; 03FC: 33 F6 / xor si,si
     fld dword [si+0x13a2]                  ; 03FE: D9 84 A2 13
     fimul word [0x13f6]                    ; 0402: DE 0E F6 13
     fidiv word [0xdd5]                     ; 0406: DE 36 D5 0D
@@ -411,9 +542,9 @@ update_camera_position:
 ; Door/opening animation and once-only sparkle burst into source buffer.
 animate_door_texture:
     mov ax,[0x1362]                        ; 041D: A1 62 13
-    db 00Bh, 0C0h                         ; 0420: or ax,ax
+    or_r_rm16 ax, ax                       ; 0420: 0B C0 / or ax,ax
     jns short 0x428                        ; 0422: 79 04
-    db 033h, 0C0h                         ; 0424: xor ax,ax
+    xor_r_rm16 ax, ax                      ; 0424: 33 C0 / xor ax,ax
     jmp short 0x457                        ; 0426: EB 2F
 door_spark_once:
     cmp byte [0x1403],0x0                  ; 0428: 80 3E 03 14 00
@@ -426,7 +557,7 @@ door_spark_once:
     mov bx,0xc1c0                          ; 043C: BB C0 C1
     call 0x699                             ; 043F: E8 57 02
     add ax,0x1900                          ; 0442: 05 00 19
-    db 08Bh, 0F8h                         ; 0445: mov di,ax
+    mov_r_rm16 di, ax                      ; 0445: 8B F8 / mov di,ax
     and ah,0x7                             ; 0447: 80 E4 07
     mov dx,0x13b                           ; 044A: BA 3B 01
     mov cx,0x2                             ; 044D: B9 02 00
@@ -443,18 +574,18 @@ loc_045F:
     push ds                                ; 0462: 1E
     mov es,[0x4266]                        ; 0463: 8E 06 66 42
     mov ds,[0x426a]                        ; 0467: 8E 1E 6A 42
-    db 08Bh, 0F0h                         ; 046B: mov si,ax
-    db 033h, 0FFh                         ; 046D: xor di,di
+    mov_r_rm16 si, ax                      ; 046B: 8B F0 / mov si,ax
+    xor_r_rm16 di, di                      ; 046D: 33 FF / xor di,di
     mov cx,0x400                           ; 046F: B9 00 04
     rep movsw                              ; 0472: F3 A5
     mov si,0x800                           ; 0474: BE 00 08
-    db 02Bh, 0F0h                         ; 0477: sub si,ax
+    sub_r_rm16 si, ax                      ; 0477: 2B F0 / sub si,ax
     push si                                ; 0479: 56
     mov ch,0x4                             ; 047A: B5 04
     rep movsw                              ; 047C: F3 A5
     pop di                                 ; 047E: 5F
-    db 08Bh, 0C8h                         ; 047F: mov cx,ax
-    db 033h, 0C0h                         ; 0481: xor ax,ax
+    mov_r_rm16 cx, ax                      ; 047F: 8B C8 / mov cx,ax
+    xor_r_rm16 ax, ax                      ; 0481: 33 C0 / xor ax,ax
     rep stosw                              ; 0483: F3 AB
     pop ds                                 ; 0485: 1F
 copy_backbuffer_to_texture_source:
@@ -495,7 +626,7 @@ sort_faces_by_depth:
     mov di,0xd714                          ; 04D5: BF 14 D7
     push di                                ; 04D8: 57
     mov si,0x23ec                          ; 04D9: BE EC 23
-    db 08Bh, 0C6h                         ; 04DC: mov ax,si
+    mov_r_rm16 ax, si                      ; 04DC: 8B C6 / mov ax,si
     mov cx,[0x176a]                        ; 04DE: 8B 0E 6A 17
 face_depth_loop:
     fldz                                   ; 04E2: D9 EE
@@ -524,7 +655,7 @@ render_sorted_faces:
 render_face_loop:
     lodsw                                  ; 050B: AD
     lodsw                                  ; 050C: AD
-    db 08Bh, 0D8h                         ; 050D: mov bx,ax
+    mov_r_rm16 bx, ax                      ; 050D: 8B D8 / mov bx,ax
     pusha                                  ; 050F: 60
     call 0xa09                             ; 0510: E8 F6 04
     popa                                   ; 0513: 61
@@ -542,12 +673,12 @@ shutdown_and_exit:
     pop ds                                 ; 0527: 1F
     mov sp,[0x338c]                        ; 0528: 8B 26 8C 33
     mov cx,0xf                             ; 052C: B9 0F 00
-    db 08Bh, 0C1h                         ; 052F: mov ax,cx
+    mov_r_rm16 ax, cx                      ; 052F: 8B C1 / mov ax,cx
     add al,0xb0                            ; 0531: 04 B0
     call 0x6b9                             ; 0533: E8 83 01
     mov al,0x7b                            ; 0536: B0 7B
     call 0x6b9                             ; 0538: E8 7E 01
-    db 032h, 0C0h                         ; 053B: xor al,al
+    xor_r_rm8 al, al                       ; 053B: 32 C0 / xor al,al
     call 0x6b9                             ; 053D: E8 79 01
     loop 0x52f                             ; 0540: E2 ED
     push ds                                ; 0542: 1E
@@ -556,7 +687,7 @@ shutdown_and_exit:
     int 0x21                               ; 054A: CD 21
     pop ds                                 ; 054C: 1F
     push ds                                ; 054D: 1E
-    db 033h, 0DBh                         ; 054E: xor bx,bx
+    xor_r_rm16 bx, bx                      ; 054E: 33 DB / xor bx,bx
     call 0x6ac                             ; 0550: E8 59 01
     mov ax,0x2508                          ; 0553: B8 08 25
     lds dx,[0x338e]                        ; 0556: C5 16 8E 33
@@ -607,7 +738,7 @@ irq0_update_texture1_sparkles:
     push ds                                ; 05B3: 1E
     pop es                                 ; 05B4: 07
     mov di,0x1648                          ; 05B5: BF 48 16
-    db 08Bh, 0F7h                         ; 05B8: mov si,di
+    mov_r_rm16 si, di                      ; 05B8: 8B F7 / mov si,di
     lodsw                                  ; 05BA: AD
     inc si                                 ; 05BB: 46
     mov cx,0x5d                            ; 05BC: B9 5D 00
@@ -663,29 +794,29 @@ draw_5x5_row:
     mov bh,0x5                             ; 0616: B7 05
 draw_5x5_pixel_loop:
     lodsb                                  ; 0618: AC
-    db 02Ah, 0C4h                         ; 0619: sub al,ah
+    sub_r_rm8 al, ah                       ; 0619: 2A C4 / sub al,ah
     jng short 0x624                        ; 061B: 7E 07
-    db 002h, 0C5h                         ; 061D: add al,ch
+    add_r_rm8 al, ch                       ; 061D: 02 C5 / add al,ch
     shl al,cl                              ; 061F: D2 E0
     mov [es:di],al                         ; 0621: 26 88 05
 draw_5x5_next_pixel:
     inc di                                 ; 0624: 47
     dec bh                                 ; 0625: FE CF
     jnz short 0x618                        ; 0627: 75 EF
-    db 003h, 0FAh                         ; 0629: add di,dx
+    add_r_rm16 di, dx                      ; 0629: 03 FA / add di,dx
     dec bl                                 ; 062B: FE CB
     jnz short 0x616                        ; 062D: 75 E7
     ret                                    ; 062F: C3
 copy_64000_bytes:
-    db 033h, 0FFh                         ; 0630: xor di,di
-    db 033h, 0F6h                         ; 0632: xor si,si
+    xor_r_rm16 di, di                      ; 0630: 33 FF / xor di,di
+    xor_r_rm16 si, si                      ; 0632: 33 F6 / xor si,si
     mov cx,0x3e80                          ; 0634: B9 80 3E
     rep movsd                              ; 0637: F3 66 A5
     ret                                    ; 063A: C3
 ; Small recursive stream expander used for MIDI/asset data.
 decode_rle_or_script:
     mov cl,[si]                            ; 063B: 8A 0C
-    db 00Ah, 0C9h                         ; 063D: or cl,cl
+    or_r_rm8 cl, cl                        ; 063D: 0A C9 / or cl,cl
     jz short 0x656                         ; 063F: 74 15
     jns short 0x653                        ; 0641: 79 10
 decode_nested_repeat:
@@ -697,14 +828,14 @@ decode_nested_repeat:
     pop cx                                 ; 064A: 59
     inc cl                                 ; 064B: FE C1
     jnz short 0x643                        ; 064D: 75 F4
-    db 08Bh, 0F0h                         ; 064F: mov si,ax
+    mov_r_rm16 si, ax                      ; 064F: 8B F0 / mov si,ax
     jmp short 0x63b                        ; 0651: EB E8
 decode_copy_word:
     movsw                                  ; 0653: A5
     jmp short 0x63b                        ; 0654: EB E5
 decode_end_block:
     inc si                                 ; 0656: 46
-    db 08Bh, 0C6h                         ; 0657: mov ax,si
+    mov_r_rm16 ax, si                      ; 0657: 8B C6 / mov ax,si
     ret                                    ; 0659: C3
 ; In-place quicksort of 4-byte face records by depth key.
 quicksort_faces:
@@ -712,10 +843,10 @@ quicksort_faces:
     pop cx                                 ; 065B: 59
     pop bx                                 ; 065C: 5B
     push ax                                ; 065D: 50
-    db 03Bh, 0CBh                         ; 065E: cmp cx,bx
+    cmp_r_rm16 cx, bx                      ; 065E: 3B CB / cmp cx,bx
     jng short 0x698                        ; 0660: 7E 36
-    db 08Bh, 0F3h                         ; 0662: mov si,bx
-    db 08Bh, 0F9h                         ; 0664: mov di,cx
+    mov_r_rm16 si, bx                      ; 0662: 8B F3 / mov si,bx
+    mov_r_rm16 di, cx                      ; 0664: 8B F9 / mov di,cx
     mov dx,[si]                            ; 0666: 8B 14
 qsort_scan_left:
     cmp [si],dx                            ; 0668: 39 14
@@ -728,14 +859,14 @@ qsort_scan_right:
     sub di,byte +0x4                       ; 0675: 83 EF 04
     jmp short 0x671                        ; 0678: EB F7
 qsort_maybe_swap:
-    db 03Bh, 0F7h                         ; 067A: cmp si,di
+    cmp_r_rm16 si, di                      ; 067A: 3B F7 / cmp si,di
     jg short 0x68a                         ; 067C: 7F 0C
     lodsd                                  ; 067E: 66 AD
     xchg [di],eax                          ; 0680: 66 87 05
     mov [si-0x4],eax                       ; 0683: 66 89 44 FC
     sub di,byte +0x4                       ; 0687: 83 EF 04
 qsort_partition_done:
-    db 03Bh, 0F7h                         ; 068A: cmp si,di
+    cmp_r_rm16 si, di                      ; 068A: 3B F7 / cmp si,di
     jng short 0x668                        ; 068C: 7E DA
     push si                                ; 068E: 56
     push cx                                ; 068F: 51
@@ -760,15 +891,15 @@ random_bounded:
 program_pit:
     mov al,0x36                            ; 06AC: B0 36
     out 0x43,al                            ; 06AE: E6 43
-    db 08Ah, 0C3h                         ; 06B0: mov al,bl
+    mov_r_rm8 al, bl                       ; 06B0: 8A C3 / mov al,bl
     out 0x40,al                            ; 06B2: E6 40
-    db 08Ah, 0C7h                         ; 06B4: mov al,bh
+    mov_r_rm8 al, bh                       ; 06B4: 8A C7 / mov al,bh
     out 0x40,al                            ; 06B6: E6 40
     ret                                    ; 06B8: C3
 mpu_send_byte:
     mov dx,0x331                           ; 06B9: BA 31 03
     push ax                                ; 06BC: 50
-    db 033h, 0C0h                         ; 06BD: xor ax,ax
+    xor_r_rm16 ax, ax                      ; 06BD: 33 C0 / xor ax,ax
 loc_06BF:
     dec ah                                 ; 06BF: FE CC
     jz short 0x6c8                         ; 06C1: 74 05
@@ -787,34 +918,34 @@ midi_note_off:
     ret                                    ; 06D4: C3
 midi_send_word:
     call 0x6b9                             ; 06D5: E8 E1 FF
-    db 08Ah, 0C4h                         ; 06D8: mov al,ah
+    mov_r_rm8 al, ah                       ; 06D8: 8A C4 / mov al,ah
     call 0x6b9                             ; 06DA: E8 DC FF
     ret                                    ; 06DD: C3
 clear_texture_zero_ax:
-    db 033h, 0C0h                         ; 06DE: xor ax,ax
+    xor_r_rm16 ax, ax                      ; 06DE: 33 C0 / xor ax,ax
 clear_texture:
-    db 033h, 0FFh                         ; 06E0: xor di,di
+    xor_r_rm16 di, di                      ; 06E0: 33 FF / xor di,di
     mov cx,0x1000                          ; 06E2: B9 00 10
     rep stosb                              ; 06E5: F3 AA
     ret                                    ; 06E7: C3
 ; Generate circle/noise texture into ES:0000. Args: radius, iteration count.
 generate_circle_noise_texture:
     push bp                                ; 06E8: 55
-    db 08Bh, 0ECh                         ; 06E9: mov bp,sp
+    mov_r_rm16 bp, sp                      ; 06E9: 8B EC / mov bp,sp
     mov es,[bx+0x424c]                     ; 06EB: 8E 87 4C 42
     call 0x6de                             ; 06EF: E8 EC FF
     mov si,0x41ad                          ; 06F2: BE AD 41
     mov dx,[bp+0x4]                        ; 06F5: 8B 56 04
-    db 08Ah, 0C2h                         ; 06F8: mov al,dl
+    mov_r_rm8 al, dl                       ; 06F8: 8A C2 / mov al,dl
     imul dl                                ; 06FA: F6 EA
-    db 08Bh, 0F8h                         ; 06FC: mov di,ax
-    db 08Bh, 0CAh                         ; 06FE: mov cx,dx
-    db 003h, 0C9h                         ; 0700: add cx,cx
+    mov_r_rm16 di, ax                      ; 06FC: 8B F8 / mov di,ax
+    mov_r_rm16 cx, dx                      ; 06FE: 8B CA / mov cx,dx
+    add_r_rm16 cx, cx                      ; 0700: 03 C9 / add cx,cx
 circle_width_loop:
-    db 08Ah, 0C2h                         ; 0702: mov al,dl
+    mov_r_rm8 al, dl                       ; 0702: 8A C2 / mov al,dl
     imul dl                                ; 0704: F6 EA
     neg ax                                 ; 0706: F7 D8
-    db 003h, 0C7h                         ; 0708: add ax,di
+    add_r_rm16 ax, di                      ; 0708: 03 C7 / add ax,di
     mov [si],ax                            ; 070A: 89 04
     fild word [si]                         ; 070C: DF 04
     fsqrt                                  ; 070E: D9 FA
@@ -828,18 +959,18 @@ circle_noise_iteration_loop:
     push cx                                ; 071A: 51
     mov bx,0x1000                          ; 071B: BB 00 10
     call 0x699                             ; 071E: E8 78 FF
-    db 08Bh, 0F8h                         ; 0721: mov di,ax
+    mov_r_rm16 di, ax                      ; 0721: 8B F8 / mov di,ax
     mov si,0x41ad                          ; 0723: BE AD 41
     mov cx,[bp+0x4]                        ; 0726: 8B 4E 04
-    db 003h, 0C9h                         ; 0729: add cx,cx
+    add_r_rm16 cx, cx                      ; 0729: 03 C9 / add cx,cx
 circle_noise_row_loop:
     push cx                                ; 072B: 51
     lodsw                                  ; 072C: AD
-    db 08Bh, 0C8h                         ; 072D: mov cx,ax
-    db 003h, 0C9h                         ; 072F: add cx,cx
+    mov_r_rm16 cx, ax                      ; 072D: 8B C8 / mov cx,ax
+    add_r_rm16 cx, cx                      ; 072F: 03 C9 / add cx,cx
     jz short 0x741                         ; 0731: 74 0E
     push di                                ; 0733: 57
-    db 02Bh, 0F8h                         ; 0734: sub di,ax
+    sub_r_rm16 di, ax                      ; 0734: 2B F8 / sub di,ax
 circle_noise_span_loop:
     and di,0xfff                           ; 0736: 81 E7 FF 0F
     inc byte [es:di]                       ; 073A: 26 FE 05
@@ -858,12 +989,12 @@ loc_0741:
 draw_polygon_scanlines:
     enter 0x96,0x0                         ; 074E: C8 96 00 00
     mov ax,0x8001                          ; 0752: B8 01 80
-    db 08Bh, 0D8h                         ; 0755: mov bx,ax
-    db 08Bh, 0F0h                         ; 0757: mov si,ax
+    mov_r_rm16 bx, ax                      ; 0755: 8B D8 / mov bx,ax
+    mov_r_rm16 si, ax                      ; 0757: 8B F0 / mov si,ax
     neg ax                                 ; 0759: F7 D8
-    db 08Bh, 0D0h                         ; 075B: mov dx,ax
+    mov_r_rm16 dx, ax                      ; 075B: 8B D0 / mov dx,ax
     mov di,[bp+0x8]                        ; 075D: 8B 7E 08
-    db 033h, 0C9h                         ; 0760: xor cx,cx
+    xor_r_rm16 cx, cx                      ; 0760: 33 C9 / xor cx,cx
 raster_bounds_loop:
     cmp ax,[di+0x12]                       ; 0762: 3B 45 12
     jng short 0x76a                        ; 0765: 7E 03
@@ -906,7 +1037,7 @@ loc_07C2:
     jz near 0x9bb                          ; 07C8: 0F 84 EF 01
     mov [bp-0x82],ax                       ; 07CC: 89 86 7E FF
     mov bx,[bp+0x4]                        ; 07D0: 8B 5E 04
-    db 003h, 0DBh                         ; 07D3: add bx,bx
+    add_r_rm16 bx, bx                      ; 07D3: 03 DB / add bx,bx
     mov es,[0x4248]                        ; 07D5: 8E 06 48 42
     mov fs,[bx+0x424c]                     ; 07D9: 8E A7 4C 42
 raster_y_loop:
@@ -919,7 +1050,7 @@ raster_left_edge_advance:
     jnl short 0x816                        ; 07EF: 7D 25
     mov si,[bp+0x8]                        ; 07F1: 8B 76 08
     imul bx,[bp-0x84],byte +0x24           ; 07F4: 6B 9E 7C FF 24
-    db 003h, 0F3h                         ; 07F9: add si,bx
+    add_r_rm16 si, bx                      ; 07F9: 03 F3 / add si,bx
     cmp ax,[si+0xc]                        ; 07FB: 3B 44 0C
     jnz short 0x816                        ; 07FE: 75 16
     mov bx,[bp-0x84]                       ; 0800: 8B 9E 7C FF
@@ -929,7 +1060,7 @@ raster_left_edge_advance:
     dec bx                                 ; 080A: 4B
 loc_080B:
     mov [bp-0x84],bx                       ; 080B: 89 9E 7C FF
-    db 033h, 0FFh                         ; 080F: xor di,di
+    xor_r_rm16 di, di                      ; 080F: 33 FF / xor di,di
     call 0x9bf                             ; 0811: E8 AB 01
     jmp short 0x7e8                        ; 0814: EB D2
 raster_right_edge_advance:
@@ -938,14 +1069,14 @@ raster_right_edge_advance:
     jnl short 0x846                        ; 081D: 7D 27
     mov si,[bp+0x8]                        ; 081F: 8B 76 08
     imul bx,[bp-0x86],byte +0x24           ; 0822: 6B 9E 7A FF 24
-    db 003h, 0F3h                         ; 0827: add si,bx
+    add_r_rm16 si, bx                      ; 0827: 03 F3 / add si,bx
     cmp ax,[si+0xc]                        ; 0829: 3B 44 0C
     jnz short 0x846                        ; 082C: 75 18
     mov bx,[bp-0x86]                       ; 082E: 8B 9E 7A FF
     inc bx                                 ; 0832: 43
     cmp bx,[bp+0x6]                        ; 0833: 3B 5E 06
     jl short 0x83a                         ; 0836: 7C 02
-    db 033h, 0DBh                         ; 0838: xor bx,bx
+    xor_r_rm16 bx, bx                      ; 0838: 33 DB / xor bx,bx
 loc_083A:
     mov [bp-0x86],bx                       ; 083A: 89 9E 7A FF
     mov di,0x14                            ; 083E: BF 14 00
@@ -954,13 +1085,13 @@ loc_083A:
 raster_draw_scanline:
     cmp word [bp-0x82],byte +0x15          ; 0846: 83 BE 7E FF 15
     jl near 0x9a4                          ; 084B: 0F 8C 55 01
-    db 066h, 033h, 0DBh                   ; 084F: xor ebx,ebx
-    db 066h, 033h, 0C9h                   ; 0852: xor ecx,ecx
+    xor_r_rm32 ebx, ebx                    ; 084F: 66 33 DB / xor ebx,ebx
+    xor_r_rm32 ecx, ecx                    ; 0852: 66 33 C9 / xor ecx,ecx
     mov bx,[bp-0x3a]                       ; 0855: 8B 5E C6
     mov [bp-0x7a],bx                       ; 0858: 89 5E 86
     mov cx,[bp-0x26]                       ; 085B: 8B 4E DA
     mov [bp-0x7c],cx                       ; 085E: 89 4E 84
-    db 02Bh, 0CBh                         ; 0861: sub cx,bx
+    sub_r_rm16 cx, bx                      ; 0861: 2B CB / sub cx,bx
     jz near 0x9a4                          ; 0863: 0F 84 3D 01
     cmp word [bp-0x7c],byte +0x0           ; 0867: 83 7E 84 00
     jng near 0x9a4                         ; 086B: 0F 8E 35 01
@@ -968,7 +1099,7 @@ raster_draw_scanline:
     jg near 0x9a4                          ; 0874: 0F 8F 2C 01
     neg bx                                 ; 0878: F7 DB
     jns short 0x880                        ; 087A: 79 04
-    db 033h, 0DBh                         ; 087C: xor bx,bx
+    xor_r_rm16 bx, bx                      ; 087C: 33 DB / xor bx,bx
     jmp short 0x885                        ; 087E: EB 05
 loc_0880:
     mov word [bp-0x7a],0x0                 ; 0880: C7 46 86 00 00
@@ -1047,14 +1178,14 @@ loc_08FE:
     mov dx,[bp-0x88]                       ; 096C: 8B 96 78 FF
     mov ax,[bp-0x4]                        ; 0970: 8B 46 FC
 raster_pixel_loop:
-    db 08Bh, 0DEh                         ; 0973: mov bx,si
-    db 032h, 0DBh                         ; 0975: xor bl,bl
+    mov_r_rm16 bx, si                      ; 0973: 8B DE / mov bx,si
+    xor_r_rm8 bl, bl                       ; 0975: 32 DB / xor bl,bl
     shr bx,byte 0x2                        ; 0977: C1 EB 02
-    db 002h, 0DEh                         ; 097A: add bl,dh
+    add_r_rm8 bl, dh                       ; 097A: 02 DE / add bl,dh
     mov bl,[fs:bx]                         ; 097C: 64 8A 1F
-    db 00Ah, 0DBh                         ; 097F: or bl,bl
+    or_r_rm8 bl, bl                        ; 097F: 0A DB / or bl,bl
     jz short 0x98c                         ; 0981: 74 09
-    db 08Ah, 0FCh                         ; 0983: mov bh,ah
+    mov_r_rm8 bh, ah                       ; 0983: 8A FC / mov bh,ah
     mov bl,[bx+0x4274]                     ; 0985: 8A 9F 74 42
     mov [es:di],bl                         ; 0989: 26 88 1D
 raster_next_pixel:
@@ -1080,9 +1211,9 @@ loc_09BB:
     ret 0x6                                ; 09BC: C2 06 00
 edge_setup_for_scanline:
     imul dx,bx,byte +0x24                  ; 09BF: 6B D3 24
-    db 08Bh, 0DEh                         ; 09C2: mov bx,si
+    mov_r_rm16 bx, si                      ; 09C2: 8B DE / mov bx,si
     mov si,[bp+0x8]                        ; 09C4: 8B 76 08
-    db 003h, 0F2h                         ; 09C7: add si,dx
+    add_r_rm16 si, dx                      ; 09C7: 03 F2 / add si,dx
     mov ax,[si+0xc]                        ; 09C9: 8B 44 0C
     sub ax,[bp-0x82]                       ; 09CC: 2B 86 7E FF
     movsx eax,ax                           ; 09D0: 66 0F BF C0
@@ -1091,7 +1222,7 @@ edge_setup_for_scanline:
     mov edx,[bx+0x10]                      ; 09DC: 66 8B 57 10
     mov [bp+di-0x3c],edx                   ; 09E0: 66 89 53 C4
     mov eax,[si+0x10]                      ; 09E4: 66 8B 44 10
-    db 066h, 02Bh, 0C2h                   ; 09E8: sub eax,edx
+    sub_r_rm32 eax, edx                    ; 09E8: 66 2B C2 / sub eax,edx
     cdq                                    ; 09EB: 66 99
     cmp word [bp-0x96],byte +0x0           ; 09ED: 83 BE 6A FF 00
     jz short 0x9fd                         ; 09F2: 74 09
@@ -1107,7 +1238,7 @@ loc_09FD:
 prepare_and_clip_face:
     enter 0x172,0x0                        ; 0A09: C8 72 01 00
     mov si,0x103f                          ; 0A0D: BE 3F 10
-    db 033h, 0FFh                         ; 0A10: xor di,di
+    xor_r_rm16 di, di                      ; 0A10: 33 FF / xor di,di
     mov cx,0x4                             ; 0A12: B9 04 00
 prepare_vertex_loop:
     push bx                                ; 0A15: 53
@@ -1131,11 +1262,11 @@ prepare_vertex_loop:
     mov ax,0x1ff                           ; 0A4B: B8 FF 01
 loc_0A4E:
     shl bx,byte 0x3                        ; 0A4E: C1 E3 03
-    db 066h, 033h, 0D2h                   ; 0A51: xor edx,edx
+    xor_r_rm32 edx, edx                    ; 0A51: 66 33 D2 / xor edx,edx
     shl ax,byte 0x7                        ; 0A54: C1 E0 07
     mul word [bx+0x1772]                   ; 0A57: F7 A7 72 17
     mov [bp+di-0x9e],edx                   ; 0A5B: 66 89 93 62 FF
-    db 032h, 0E4h                         ; 0A60: xor ah,ah
+    xor_r_rm8 ah, ah                       ; 0A60: 32 E4 / xor ah,ah
     mov al,[si+0x4]                        ; 0A62: 8A 44 04
     shl eax,byte 0x10                      ; 0A65: 66 C1 E0 10
     mov [bp+di-0xa6],eax                   ; 0A69: 66 89 83 5A FF
@@ -1149,7 +1280,7 @@ loc_0A4E:
     loop 0xa15                             ; 0A7E: E2 95
     mov ax,[bx]                            ; 0A80: 8B 07
     mov [bp-0x8],ax                        ; 0A82: 89 46 F8
-    db 033h, 0DBh                         ; 0A85: xor bx,bx
+    xor_r_rm16 bx, bx                      ; 0A85: 33 DB / xor bx,bx
     mov [bp-0x6],bx                        ; 0A87: 89 5E FA
     fld dword [bp-0x4a]                    ; 0A8A: D9 46 B6
     ftst                                   ; 0A8D: D9 E4
@@ -1160,8 +1291,8 @@ loc_0A4E:
     dec bx                                 ; 0A97: 4B
 loc_0A98:
     mov [bp-0xa],bl                        ; 0A98: 88 5E F6
-    db 033h, 0F6h                         ; 0A9B: xor si,si
-    db 033h, 0FFh                         ; 0A9D: xor di,di
+    xor_r_rm16 si, si                      ; 0A9B: 33 F6 / xor si,si
+    xor_r_rm16 di, di                      ; 0A9D: 33 FF / xor di,di
 clip_vertex_loop:
     fld dword [bp+si-0xb6]                 ; 0A9F: D9 82 4A FF
     ftst                                   ; 0AA3: D9 E4
@@ -1205,7 +1336,7 @@ loc_0AE4:
     jl short 0xb5e                         ; 0AF3: 7C 69
     nop                                    ; 0AF5: 90
     nop                                    ; 0AF6: 90
-    db 033h, 0FFh                         ; 0AF7: xor di,di
+    xor_r_rm16 di, di                      ; 0AF7: 33 FF / xor di,di
 project_visible_vertex_loop:
     fild word [0xdcf]                      ; 0AF9: DF 06 CF 0D
     fsub dword [bp+di-0x16a]               ; 0AFD: D8 A3 96 FE
@@ -1267,10 +1398,10 @@ loc_0B6D:
     fstp dword [bp+di-0x172]               ; 0B91: D9 9B 8E FE
     mov dl,[bx]                            ; 0B95: 8A 17
     inc bx                                 ; 0B97: 43
-    db 032h, 0F6h                         ; 0B98: xor dh,dh
-    db 003h, 0FAh                         ; 0B9A: add di,dx
-    db 003h, 0F2h                         ; 0B9C: add si,dx
-    db 003h, 0C2h                         ; 0B9E: add ax,dx
+    xor_r_rm8 dh, dh                       ; 0B98: 32 F6 / xor dh,dh
+    add_r_rm16 di, dx                      ; 0B9A: 03 FA / add di,dx
+    add_r_rm16 si, dx                      ; 0B9C: 03 F2 / add si,dx
+    add_r_rm16 ax, dx                      ; 0B9E: 03 C2 / add ax,dx
     loop 0xb81                             ; 0BA0: E2 DF
     fstp st0                               ; 0BA2: DD D8
     pop di                                 ; 0BA4: 5F
@@ -1298,7 +1429,7 @@ rotate_pair_by_angle:
     ret                                    ; 0BCF: C3
 rotate_matrix_euler:
     push bp                                ; 0BD0: 55
-    db 08Bh, 0ECh                         ; 0BD1: mov bp,sp
+    mov_r_rm16 bp, sp                      ; 0BD1: 8B EC / mov bp,sp
     mov di,[bp+0x4]                        ; 0BD3: 8B 7E 04
     fild word [bp+0xa]                     ; 0BD6: DF 46 0A
     lea bx,[di+0x8]                        ; 0BD9: 8D 5D 08
@@ -1316,14 +1447,14 @@ rotate_matrix_euler:
     ret 0x8                                ; 0BF9: C2 08 00
 build_camera_matrix:
     push bp                                ; 0BFC: 55
-    db 08Bh, 0ECh                         ; 0BFD: mov bp,sp
+    mov_r_rm16 bp, sp                      ; 0BFD: 8B EC / mov bp,sp
     mov di,0x13d2                          ; 0BFF: BF D2 13
     mov ch,0x2                             ; 0C02: B5 02
 loc_0C04:
     mov cl,0x2                             ; 0C04: B1 02
 loc_0C06:
     fldz                                   ; 0C06: D9 EE
-    db 03Ah, 0E9h                         ; 0C08: cmp ch,cl
+    cmp_r_rm8 ch, cl                       ; 0C08: 3A E9 / cmp ch,cl
     jnz short 0xc10                        ; 0C0A: 75 04
     fstp st0                               ; 0C0C: DD D8
     fld1                                   ; 0C0E: D9 E8
@@ -1334,7 +1465,7 @@ loc_0C10:
     jns short 0xc06                        ; 0C17: 79 ED
     dec ch                                 ; 0C19: FE CD
     jns short 0xc04                        ; 0C1B: 79 E7
-    db 033h, 0FFh                         ; 0C1D: xor di,di
+    xor_r_rm16 di, di                      ; 0C1D: 33 FF / xor di,di
 loc_0C1F:
     push di                                ; 0C1F: 57
     push word [bp+0xa]                     ; 0C20: FF 76 0A
@@ -1344,7 +1475,7 @@ loc_0C1F:
     push di                                ; 0C2D: 57
     call 0xbd0                             ; 0C2E: E8 9F FF
     pop di                                 ; 0C31: 5F
-    db 033h, 0DBh                         ; 0C32: xor bx,bx
+    xor_r_rm16 bx, bx                      ; 0C32: 33 DB / xor bx,bx
 loc_0C34:
     fld dword [di+0x13d2]                  ; 0C34: D9 85 D2 13
     fmul dword [bx+0x138a]                 ; 0C38: D8 8F 8A 13
@@ -1403,13 +1534,13 @@ scene_token_loop:
     lodsb                                  ; 0CAF: AC
     cmp al,0xff                            ; 0CB0: 3C FF
     jz near 0xdc3                          ; 0CB2: 0F 84 0D 01
-    db 08Ah, 0F8h                         ; 0CB6: mov bh,al
+    mov_r_rm8 bh, al                       ; 0CB6: 8A F8 / mov bh,al
     and bx,0x7000                          ; 0CB8: 81 E3 00 70
     add bh,0xf                             ; 0CBC: 80 C7 0F
     mov [bp-0x4],bx                        ; 0CBF: 89 5E FC
-    db 025h, 00Fh, 000h                   ; 0CC2: and ax,0xf
+    and ax, strict word 0xf                ; 0CC2: 25 0F 00
     mov [bp-0x2],ax                        ; 0CC5: 89 46 FE
-    db 033h, 0DBh                         ; 0CC8: xor bx,bx
+    xor_r_rm16 bx, bx                      ; 0CC8: 33 DB / xor bx,bx
 scene_faces_loop:
     test bl,0x4                            ; 0CCA: F6 C3 04
     jz short 0xcd4                         ; 0CCD: 74 05
@@ -1420,7 +1551,7 @@ loc_0CD4:
     mov al,[si]                            ; 0CD4: 8A 04
     shr al,byte 0x4                        ; 0CD6: C0 E8 04
 loc_0CD9:
-    db 032h, 0E4h                         ; 0CD9: xor ah,ah
+    xor_r_rm8 ah, ah                       ; 0CD9: 32 E4 / xor ah,ah
     dec ax                                 ; 0CDB: 48
     js short 0xd2e                         ; 0CDC: 78 50
     imul di,[0x176a],byte +0xa             ; 0CDE: 6B 3E 6A 17 0A
@@ -1437,7 +1568,7 @@ scene_vertex_loop:
     mov di,0x176c                          ; 0CFC: BF 6C 17
     push cx                                ; 0CFF: 51
     mov cx,[0x1768]                        ; 0D00: 8B 0E 68 17
-    db 033h, 0C0h                         ; 0D04: xor ax,ax
+    xor_r_rm16 ax, ax                      ; 0D04: 33 C0 / xor ax,ax
     jcxz 0xd1e                             ; 0D06: E3 16
 scene_find_vertex_loop:
     mov edx,[si]                           ; 0D08: 66 8B 14
@@ -1507,7 +1638,7 @@ scene_emit_cube_vertices_setup:
 scene_emit_cube_vertices_loop:
     pusha                                  ; 0D7F: 60
     movsx si,[bx+0x1047]                   ; 0D80: 0F BE B7 47 10
-    db 08Bh, 0C6h                         ; 0D85: mov ax,si
+    mov_r_rm16 ax, si                      ; 0D85: 8B C6 / mov ax,si
     add si,0xc274                          ; 0D87: 81 C6 74 C2
     xor bl,0x7                             ; 0D8B: 80 F3 07
     movsx di,[bx+0x1047]                   ; 0D8E: 0F BE BF 47 10
@@ -1516,9 +1647,9 @@ scene_emit_cube_vertices_loop:
     movsd                                  ; 0D98: 66 A5
     movsd                                  ; 0D9A: 66 A5
     pop si                                 ; 0D9C: 5E
-    db 08Bh, 0D8h                         ; 0D9D: mov bx,ax
+    mov_r_rm16 bx, ax                      ; 0D9D: 8B D8 / mov bx,ax
     shr bx,1                               ; 0D9F: D1 EB
-    db 003h, 0D8h                         ; 0DA1: add bx,ax
+    add_r_rm16 bx, ax                      ; 0DA1: 03 D8 / add bx,ax
     mov di,0xc2ec                          ; 0DA3: BF EC C2
     mov cl,0x3                             ; 0DA6: B1 03
 scene_emit_component_loop:

@@ -6,10 +6,58 @@
 bits 16
 org 0100h
 
+%macro _reg16_id 2
+    %ifidni %2, ax
+        %assign %1 0
+    %elifidni %2, cx
+        %assign %1 1
+    %elifidni %2, dx
+        %assign %1 2
+    %elifidni %2, bx
+        %assign %1 3
+    %elifidni %2, sp
+        %assign %1 4
+    %elifidni %2, bp
+        %assign %1 5
+    %elifidni %2, si
+        %assign %1 6
+    %elifidni %2, di
+        %assign %1 7
+    %else
+        %error "unsupported 16-bit register"
+    %endif
+%endmacro
+
+; Force the opcode direction bit used by the original binary for reg/reg forms
+; where NASM's normal mnemonic picks the equivalent opposite encoding.
+%macro xor_r_rm16 2
+    _reg16_id %%reg, %1
+    _reg16_id %%rm, %2
+    db 033h, 0C0h + (%%reg << 3) + %%rm
+%endmacro
+
+%macro mov_r_rm16 2
+    _reg16_id %%reg, %1
+    _reg16_id %%rm, %2
+    db 08Bh, 0C0h + (%%reg << 3) + %%rm
+%endmacro
+
+%macro sub_r_rm16 2
+    _reg16_id %%reg, %1
+    _reg16_id %%rm, %2
+    db 02Bh, 0C0h + (%%reg << 3) + %%rm
+%endmacro
+
+%macro cmp_r_rm16 2
+    _reg16_id %%reg, %1
+    _reg16_id %%rm, %2
+    db 03Bh, 0C0h + (%%reg << 3) + %%rm
+%endmacro
+
 
 ; Copy the 64 KiB COM segment up by 2000h paragraphs.
 packed_entry:
-    db 033h, 0F6h                        ; 0100: xor si,si
+    xor_r_rm16 si, si                    ; 0100: 33 F6 / xor si,si
     mov di,0x2000                        ; 0102: BF 00 20
     mov ch,0x10                          ; 0105: B5 10
     rep movsw                            ; 0107: F3 A5
@@ -39,7 +87,7 @@ init_range_model_loop:
 load_initial_code_value:
     lodsw                                ; 012A: AD
     xchg al,ah                           ; 012B: 86 E0
-    db 08Bh, 0C8h                         ; 012D: mov cx,ax
+    mov_r_rm16 cx, ax                    ; 012D: 8B C8 / mov cx,ax
     mov bp,0xffff                        ; 012F: BD FF FF
 ; Decode one command symbol: literal, back-reference, or end marker.
 unpack_symbol_loop:
@@ -56,7 +104,7 @@ copy_backref_command:
     call 0x155                           ; 0143: E8 0F 00
     pop dx                               ; 0146: 5A
     neg ax                               ; 0147: F7 D8
-    db 08Bh, 0D8h                         ; 0149: mov bx,ax
+    mov_r_rm16 bx, ax                    ; 0149: 8B D8 / mov bx,ax
 copy_backref_loop:
     mov al,[es:bx+di]                    ; 014B: 26 8A 01
     stosb                                ; 014E: AA
@@ -70,11 +118,11 @@ unpack_done:
 decode_range_symbol:
     push di                              ; 0155: 57
     mov bx,0x1321                        ; 0156: BB 21 13
-    db 08Bh, 0C1h                         ; 0159: mov ax,cx
+    mov_r_rm16 ax, cx                    ; 0159: 8B C1 / mov ax,cx
     inc ax                               ; 015B: 40
     mul word [bx]                        ; 015C: F7 27
     div bp                               ; 015E: F7 F5
-    db 08Bh, 0FBh                         ; 0160: mov di,bx
+    mov_r_rm16 di, bx                    ; 0160: 8B FB / mov di,bx
     mov dx,0x111                         ; 0162: BA 11 01
 find_symbol_bucket_loop:
     dec di                               ; 0165: 4F
@@ -83,15 +131,15 @@ find_symbol_bucket_loop:
     cmp [di],ax                          ; 0168: 39 05
     jg short 0x165                      ; 016A: 7F F9
     push dx                              ; 016C: 52
-    db 08Bh, 0C5h                         ; 016D: mov ax,bp
+    mov_r_rm16 ax, bp                    ; 016D: 8B C5 / mov ax,bp
     mul word [di]                        ; 016F: F7 25
     div word [bx]                        ; 0171: F7 37
-    db 02Bh, 0C8h                         ; 0173: sub cx,ax
+    sub_r_rm16 cx, ax                    ; 0173: 2B C8 / sub cx,ax
     xchg ax,bp                           ; 0175: 95
     mul word [di+0x2]                    ; 0176: F7 65 02
     div word [bx]                        ; 0179: F7 37
     xchg ax,bp                           ; 017B: 95
-    db 02Bh, 0E8h                         ; 017C: sub bp,ax
+    sub_r_rm16 bp, ax                    ; 017C: 2B E8 / sub bp,ax
 
 ; Shift more bits from compressed stream while range high bit is clear.
 renormalize_range_loop:
@@ -112,7 +160,7 @@ update_model_counts_loop:
     dec bx                               ; 0198: 4B
     dec bx                               ; 0199: 4B
     dec ax                               ; 019A: 48
-    db 03Bh, 0D0h                         ; 019B: cmp dx,ax
+    cmp_r_rm16 dx, ax                    ; 019B: 3B D0 / cmp dx,ax
     jnz short 0x196                     ; 019D: 75 F7
     pop di                               ; 019F: 5F
     ret                                  ; 01A0: C3
